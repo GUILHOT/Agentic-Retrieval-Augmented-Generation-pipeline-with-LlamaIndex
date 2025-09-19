@@ -1,6 +1,3 @@
-Absolutely, Oliver—here’s a clean, professional `README.md` tailored to your project setup, based on everything you've shared:
-
----
 
 ## 🧠 Agentic RAG Pipeline with LlamaIndex & Ollama
 
