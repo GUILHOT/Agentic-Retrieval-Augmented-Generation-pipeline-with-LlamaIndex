@@ -3,6 +3,9 @@ chat_app.py
 100% local: Ollama (requests) + LlamaIndex (retriever) + HuggingFace embeddings + Streamlit UI
 No 'openai' package required. No API keys.
 """
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 import os
 import json
@@ -54,26 +57,27 @@ def ollama_chat(messages, model=DEFAULT_MODEL, stream: bool = False, timeout: in
         raise RuntimeError(f"Error contacting Ollama at {OLLAMA_CHAT_ENDPOINT}: {e}")
 
     if stream:
-        # Ollama uses server-sent-event style lines starting with "data: "
-        for raw_line in resp.iter_lines(decode_unicode=True):
+        for raw_line in resp.iter_lines():
             if not raw_line:
                 continue
-            # lines look like: b'data: {"id":...}'
-            line = raw_line.strip()
+            try:
+            # DÉCODE EXPLICITEMENT EN UTF-8
+                line = raw_line.decode('utf-8').strip()
+            except UnicodeDecodeError:
+                continue  # ignore les lignes non UTF-8
+
             if line.startswith("data:"):
-                line = line[len("data:"):].strip()
-            # Skip non-json markers like [DONE]
+                line = line[5:].strip()
             if not line or line == "[DONE]":
                 continue
+
             try:
                 chunk = json.loads(line)
-                # chunk structure: {"choices":[{"delta": {"content": "..."} }], ...}
-                delta = chunk.get("choices", [])[0].get("delta", {})
-                content_piece = delta.get("content")
+                content_piece = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
                 if content_piece:
+                    # Nettoie les caractères problématiques (optionnel)
                     yield content_piece
             except json.JSONDecodeError:
-                # ignore malformatted lines
                 continue
         return
     else:
@@ -143,7 +147,7 @@ st.title("📚 Local PDF Q&A — Ollama only (no OpenAI)")
 # Left panel: upload + index controls
 with st.sidebar:
     st.header("Index / Data")
-    st.markdown("Drop PDFs / text files here. Files are saved into `./data/` and the index is (re)built.")
+    st.markdown("Upload your PDFs or text files below.They will be saved in the `./data/` folder and used to answer your questions. Click **Rebuild index**")
     uploaded = st.file_uploader("Upload files (pdf, txt, md, png/jpg)", accept_multiple_files=True)
 
     if uploaded:
@@ -158,10 +162,10 @@ with st.sidebar:
         if "index" in st.session_state:
             st.session_state.pop("index")
 
-    if st.button("Rebuild index now"):
+    if st.button("🔄 Rebuild index from ./data/"):
         if "index" in st.session_state:
             st.session_state.pop("index")
-        st.experimental_rerun()
+        st.rerun()
 
     st.write("---")
     st.markdown("Ollama endpoint:")
@@ -258,8 +262,3 @@ if prompt:
 
     # Save assistant response in session history
     st.session_state["messages"].append({"role": "assistant", "content": assistant_text})
-
-
-
-
-
